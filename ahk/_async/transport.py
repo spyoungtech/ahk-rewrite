@@ -50,6 +50,7 @@ class AsyncAHKProcess:
 
     async def start(self) -> None:
         self._proc = await async_create_process(self.runargs)
+        atexit.register(kill, self._proc)
         return None
 
     async def adrain_stdin(self) -> None:  # unasync: remove

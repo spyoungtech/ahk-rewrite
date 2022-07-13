@@ -49,6 +49,7 @@ class SyncAHKProcess:
 
     def start(self) -> None:
         self._proc = sync_create_process(self.runargs)
+        atexit.register(kill, self._proc)
         return None
 
 
