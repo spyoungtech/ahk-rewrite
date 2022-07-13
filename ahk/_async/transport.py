@@ -1,4 +1,5 @@
 import asyncio.subprocess
+import atexit
 import io
 import os
 import subprocess
@@ -8,8 +9,11 @@ from abc import ABC
 from abc import abstractmethod
 from io import BytesIO
 from shutil import which
+from typing import Any
 from typing import Literal
 from typing import Optional
+from typing import Protocol
+from typing import runtime_checkable
 
 from ahk.message import BooleanResponseMessage
 from ahk.message import CoordinateResponseMessage
@@ -27,6 +31,16 @@ DEFAULT_EXECUTABLE_PATH = r'C:\Program Files\AutoHotkey\AutoHotkey.exe'
 AsyncIOProcess = asyncio.subprocess.Process  # unasync: remove
 
 SyncIOProcess = subprocess.Popen[bytes]
+
+
+@runtime_checkable
+class Killable(Protocol):
+    def kill(self) -> None:
+        ...
+
+
+def kill(proc: Killable) -> None:
+    proc.kill()
 
 
 class AsyncAHKProcess:
@@ -118,6 +132,7 @@ class AsyncTransport(ABC):
     _started: bool = False
 
     async def init(self) -> None:
+        self._started = True
         return None
 
     @typing.overload
@@ -426,6 +441,7 @@ class AsyncDaemonProcessTransport(AsyncTransport):
 
     async def init(self) -> None:
         await self.start()
+        await super().init()
         return None
 
     async def start(self) -> None:
@@ -437,7 +453,9 @@ class AsyncDaemonProcessTransport(AsyncTransport):
     async def send(self, request: RequestMessage) -> ResponseMessage:
         newline = '\n'
 
-        msg = f"{request.function_name}{','.join(arg.replace(newline, '`n') for arg in request.args)}\n".encode('utf-8')
+        msg = f"{request.function_name}{',' if request.args else ''}{','.join(arg.replace(newline, '`n') for arg in request.args)}\n".encode(
+            'utf-8'
+        )
         assert self._proc is not None
         self._proc.write(msg)
         await self._proc.adrain_stdin()
@@ -449,6 +467,6 @@ class AsyncDaemonProcessTransport(AsyncTransport):
         for _ in range(int(num_lines) + 1):
             part = await self._proc.readline()
             content_buffer.write(part)
-        content = content_buffer.getvalue()
+        content = content_buffer.getvalue()[:-1]
         response = ResponseMessage.from_bytes(content)
         return response
